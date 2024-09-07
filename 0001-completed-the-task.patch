@@ -1,0 +1,131 @@
+From 925c3afeff2807e8332503417e0da20e045a0f27 Mon Sep 17 00:00:00 2001
+From: Saad Shaikh <73577526+saadshaikh1023@users.noreply.github.com>
+Date: Sat, 7 Sep 2024 19:57:49 +0530
+Subject: [PATCH] completed the task
+
+---
+ src/DataManipulator.ts | 40 ++++++++++++++++++++++++++++++----------
+ src/Graph.tsx          | 29 +++++++++++++++++------------
+ 2 files changed, 47 insertions(+), 22 deletions(-)
+
+diff --git a/src/DataManipulator.ts b/src/DataManipulator.ts
+index 7f62295..142e5b8 100644
+--- a/src/DataManipulator.ts
++++ b/src/DataManipulator.ts
+@@ -1,20 +1,40 @@
+ import { ServerRespond } from './DataStreamer';
+ 
+ export interface Row {
+-  stock: string,
+-  top_ask_price: number,
++  price_abc: number,
++  price_def: number,
++  ratio: number,
+   timestamp: Date,
++  upper_bound: number,
++  lower_bound: number,
++  trigger_alert: number| undefined,
+ }
+ 
+ 
+ export class DataManipulator {
+-  static generateRow(serverResponds: ServerRespond[]) {
+-    return serverResponds.map((el: any) => {
+-      return {
+-        stock: el.stock,
+-        top_ask_price: el.top_ask && el.top_ask.price || 0,
+-        timestamp: el.timestamp,
+-      };
+-    })
++  static generateRow(serverRespond: ServerRespond[]): Row {
++    // Calculate the price of ABC and DEF based on the top bid and ask prices
++    const priceABC = (serverRespond[0].top_ask.price + serverRespond[0].top_bid.price) / 2;
++    const priceDEF = (serverRespond[1].top_ask.price + serverRespond[1].top_bid.price) / 2;
++
++    // Calculate the ratio of the prices
++    const ratio = priceABC / priceDEF;
++
++    // Define the upper and lower bounds for the ratio
++    const upperBound = 1 + 0.05;
++    const lowerBound = 1 - 0.05;
++
++    // Return the data row
++    return {
++      price_abc: priceABC,
++      price_def: priceDEF,
++      ratio,
++      timestamp: serverRespond[0].timestamp > serverRespond[1].timestamp 
++        ? serverRespond[0].timestamp 
++        : serverRespond[1].timestamp,
++      upper_bound: upperBound,
++      lower_bound: lowerBound,
++      trigger_alert: (ratio > upperBound || ratio < lowerBound) ? ratio : undefined,
++    };
+   }
+ }
+diff --git a/src/Graph.tsx b/src/Graph.tsx
+index 277797d..b4697bc 100644
+--- a/src/Graph.tsx
++++ b/src/Graph.tsx
+@@ -1,5 +1,5 @@
+ import React, { Component } from 'react';
+-import { Table } from '@finos/perspective';
++import { Table, TableData } from '@finos/perspective';
+ import { ServerRespond } from './DataStreamer';
+ import { DataManipulator } from './DataManipulator';
+ import './Graph.css';
+@@ -23,10 +23,13 @@ class Graph extends Component<IProps, {}> {
+     const elem = document.getElementsByTagName('perspective-viewer')[0] as unknown as PerspectiveViewerElement;
+ 
+     const schema = {
+-      stock: 'string',
+-      top_ask_price: 'float',
+-      top_bid_price: 'float',
++      price_abc: 'float',
++      price_def: 'float',
++      ratio: 'float',
+       timestamp: 'date',
++      upper_bound: 'float',
++      lower_bound: 'float',
++      trigger_alert: 'float',
+     };
+ 
+     if (window.perspective && window.perspective.worker()) {
+@@ -35,24 +38,26 @@ class Graph extends Component<IProps, {}> {
+     if (this.table) {
+       // Load the `table` in the `<perspective-viewer>` DOM reference.
+       elem.load(this.table);
+-      elem.setAttribute('view', 'y_line');
+-      elem.setAttribute('column-pivots', '["stock"]');
++      elem.setAttribute('view', 'y_line'); 
+       elem.setAttribute('row-pivots', '["timestamp"]');
+-      elem.setAttribute('columns', '["top_ask_price"]');
++      elem.setAttribute('columns', '["ratio", "lower_bound", "upper_bound", "trigger_alert"]');
+       elem.setAttribute('aggregates', JSON.stringify({
+-        stock: 'distinctcount',
+-        top_ask_price: 'avg',
+-        top_bid_price: 'avg',
++        price_abc: 'avg',
++        price_def: 'avg',
++        ratio: 'avg',
+         timestamp: 'distinct count',
++        upper_bound: 'avg',
++        lower_bound: 'avg',
++        trigger_alert: 'avg',
+       }));
+     }
+   }
+ 
+   componentDidUpdate() {
+     if (this.table) {
+-      this.table.update(
++      this.table.update([
+         DataManipulator.generateRow(this.props.data),
+-      );
++      ] as unknown as TableData);
+     }
+   }
+ }
+-- 
+2.42.0.windows.2
+
